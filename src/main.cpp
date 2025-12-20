@@ -17,8 +17,8 @@
 #define P32_PIN 32         // P32引脚
 
 // WiFi 配置 - 请根据您的网络环境修改
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = "LC_01";
+const char* password = "12345678";
 
 // MQTT 配置
 #define MQTT_SERVER "192.168.10.80"
