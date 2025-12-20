@@ -14,4 +14,4 @@ const uint16_t MQTT_PORT = 1883;
 const char* MQTT_USER = "ball";
 const char* MQTT_PASSWORD = "";
 const char* MQTT_TOPIC_SUB = "ball/triggered";
-const char* MQTT_TOPIC_RESET = "#/reset";
+const char* MQTT_TOPIC_RESET = "ball/reset";
