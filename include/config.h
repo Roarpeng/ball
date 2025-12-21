@@ -5,13 +5,29 @@
 #include <stdint.h>
 
 // ==================== 硬件配置 ====================
-#define PIN_WS2812 23
+#define LED_PIN 23
 #define NUM_LEDS 144
 #define LED_BRIGHTNESS 50
+#define LED_TYPE WS2815
+#define COLOR_ORDER GRB
 
 // 按钮引脚定义
 extern const uint8_t BUTTON_PINS[];
 extern const uint8_t NUM_BUTTONS;
+
+// ==================== 颜色配置 ====================
+// RGB颜色定义 (R, G, B范围: 0-255)
+#define COLOR_BREATHE_RED_R 255
+#define COLOR_BREATHE_RED_G 0
+#define COLOR_BREATHE_RED_B 0
+
+#define COLOR_BREATHE_GREEN_R 0
+#define COLOR_BREATHE_GREEN_G 255
+#define COLOR_BREATHE_GREEN_B 0
+
+#define COLOR_FLASH_YELLOW_R 255
+#define COLOR_FLASH_YELLOW_G 255
+#define COLOR_FLASH_YELLOW_B 0
 
 // ==================== 时间配置 ====================
 #define DEBOUNCE_DELAY 50
@@ -36,8 +52,9 @@ extern const char* MQTT_TOPIC_RESET;
 // ==================== 枚举定义 ====================
 enum LEDMode {
   LED_OFF,
-  LED_FLASH_RED_YELLOW,
-  LED_BREATHE_GREEN
+  LED_BREATHE_RED,
+  LED_BREATHE_GREEN,
+  LED_FLASH_YELLOW
 };
 
 enum ButtonIndex {
@@ -58,12 +75,14 @@ struct ButtonState {
   bool stateChanged;
 };
 
+// ==================== 数据结构 ====================
 struct LEDController {
   LEDMode mode;
   unsigned long lastUpdateTime;
   bool blinkState;
   int breathState;
   int breathDirection;
+  int greenBreathBrightness;  // 绿色呼吸的亮度级别 (0-255)
 };
 
 struct SystemStatus {
@@ -72,6 +91,7 @@ struct SystemStatus {
   bool allPinsTriggered;
   bool previousAllPinsTriggered;
   bool previousP32Triggered;
+  bool p32Triggered;  // P32是否被触发过，触发后保持红色呼吸直到系统重置
 };
 
 #endif // CONFIG_H

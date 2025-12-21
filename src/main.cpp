@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ESPAsyncWebServer.h>
@@ -8,7 +8,7 @@
 #include "config.h"
 
 // ==================== 全局对象 ====================
-Adafruit_NeoPixel strip(NUM_LEDS, PIN_WS2812, NEO_GRB + NEO_KHZ800);
+CRGB leds[NUM_LEDS];
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
 AsyncWebServer webServer(WEB_SERVER_PORT);
@@ -35,8 +35,9 @@ void updateWebSocket();
 
 void handleButtonLogic();
 void setLEDMode(LEDMode mode);
-void processLEDFlash();
-void processLEDBreathe();
+void processLEDBreatheRed();
+void processLEDBreatheGreen();
+void processLEDFlashYellow();
 void turnOffLEDs();
 
 void onMQTTMessage(char* topic, byte* payload, unsigned int length);
@@ -79,6 +80,7 @@ void initializeSystem() {
   systemStatus.allPinsTriggered = false;
   systemStatus.previousAllPinsTriggered = false;
   systemStatus.previousP32Triggered = false;
+  systemStatus.p32Triggered = false;
   
   // 初始化LED控制器
   ledController.mode = LED_OFF;
@@ -86,6 +88,7 @@ void initializeSystem() {
   ledController.blinkState = false;
   ledController.breathState = 0;
   ledController.breathDirection = 1;
+  ledController.greenBreathBrightness = 0;  // 初始亮度为0
 }
 
 void initializeButtons() {
@@ -100,9 +103,10 @@ void initializeButtons() {
 }
 
 void initializeLED() {
-  strip.begin();
-  strip.show();
-  strip.setBrightness(LED_BRIGHTNESS);
+  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  FastLED.setBrightness(LED_BRIGHTNESS);
+  FastLED.clear();
+  FastLED.show();
   Serial.println("LED灯带初始化完成");
 }
 
@@ -207,11 +211,14 @@ void updateButtonStates() {
 // ==================== LED控制器 ====================
 void updateLEDController() {
   switch (ledController.mode) {
-    case LED_FLASH_RED_YELLOW:
-      processLEDFlash();
+    case LED_BREATHE_RED:
+      processLEDBreatheRed();
       break;
     case LED_BREATHE_GREEN:
-      processLEDBreathe();
+      processLEDBreatheGreen();
+      break;
+    case LED_FLASH_YELLOW:
+      processLEDFlashYellow();
       break;
     case LED_OFF:
     default:
@@ -225,14 +232,12 @@ void processLEDFlash() {
   if (currentTime - ledController.lastUpdateTime >= BLINK_INTERVAL) {
     ledController.lastUpdateTime = currentTime;
     
-    uint32_t color = ledController.blinkState ? 
-                     strip.Color(255, 0, 0) :    // 红色
-                     strip.Color(255, 165, 0);   // 黄色
+    CRGB color = ledController.blinkState ? 
+                 CRGB::Red :    // 红色
+                 CRGB(255, 165, 0);   // 黄色
     
-    for (uint16_t i = 0; i < NUM_LEDS; i++) {
-      strip.setPixelColor(i, color);
-    }
-    strip.show();
+    fill_solid(leds, NUM_LEDS, color);
+    FastLED.show();
     
     ledController.blinkState = !ledController.blinkState;
   }
@@ -253,18 +258,84 @@ void processLEDBreathe() {
       ledController.breathDirection = 1;
     }
     
-    for (uint16_t i = 0; i < NUM_LEDS; i++) {
-      strip.setPixelColor(i, strip.Color(0, ledController.breathState, 0));
-    }
-    strip.show();
+    fill_solid(leds, NUM_LEDS, CRGB(0, ledController.breathState, 0));
+    FastLED.show();
   }
 }
 
 void turnOffLEDs() {
-  for (uint16_t i = 0; i < NUM_LEDS; i++) {
-    strip.setPixelColor(i, 0);
+  fill_solid(leds, NUM_LEDS, CRGB::Black);
+  FastLED.show();
+}
+
+// ==================== LED灯效函数 ====================
+void processLEDBreatheRed() {
+  unsigned long currentTime = millis();
+  if (currentTime - ledController.lastUpdateTime >= BREATHE_INTERVAL) {
+    ledController.lastUpdateTime = currentTime;
+
+    ledController.breathState += ledController.breathDirection * BREATHE_STEP;
+
+    if (ledController.breathState >= 255) {
+      ledController.breathState = 255;
+      ledController.breathDirection = -1;
+    } else if (ledController.breathState <= 0) {
+      ledController.breathState = 0;
+      ledController.breathDirection = 1;
+    }
+
+    // 使用配置的RGB颜色，根据呼吸状态调整亮度
+    uint8_t brightness = ledController.breathState;
+    uint8_t r = (COLOR_BREATHE_RED_R * brightness) / 255;
+    uint8_t g = (COLOR_BREATHE_RED_G * brightness) / 255;
+    uint8_t b = (COLOR_BREATHE_RED_B * brightness) / 255;
+
+    fill_solid(leds, NUM_LEDS, CRGB(r, g, b));
+    FastLED.show();
   }
-  strip.show();
+}
+
+void processLEDBreatheGreen() {
+  unsigned long currentTime = millis();
+  if (currentTime - ledController.lastUpdateTime >= BREATHE_INTERVAL) {
+    ledController.lastUpdateTime = currentTime;
+
+    ledController.breathState += ledController.breathDirection * BREATHE_STEP;
+
+    if (ledController.breathState >= ledController.greenBreathBrightness) {
+      ledController.breathState = ledController.greenBreathBrightness;
+      ledController.breathDirection = -1;
+    } else if (ledController.breathState <= 0) {
+      ledController.breathState = 0;
+      ledController.breathDirection = 1;
+    }
+
+    // 使用配置的RGB颜色，根据呼吸状态调整亮度
+    uint8_t brightness = ledController.breathState;
+    uint8_t r = (COLOR_BREATHE_GREEN_R * brightness) / 255;
+    uint8_t g = (COLOR_BREATHE_GREEN_G * brightness) / 255;
+    uint8_t b = (COLOR_BREATHE_GREEN_B * brightness) / 255;
+
+    fill_solid(leds, NUM_LEDS, CRGB(r, g, b));
+    FastLED.show();
+  }
+}
+
+void processLEDFlashYellow() {
+  unsigned long currentTime = millis();
+  if (currentTime - ledController.lastUpdateTime >= BLINK_INTERVAL) {
+    ledController.lastUpdateTime = currentTime;
+
+    // 使用配置的RGB颜色
+    CRGB color = ledController.blinkState ?
+                 CRGB(COLOR_FLASH_YELLOW_R, COLOR_FLASH_YELLOW_G, COLOR_FLASH_YELLOW_B) :
+                 CRGB::Black;
+
+    fill_solid(leds, NUM_LEDS, color);
+    FastLED.show();
+
+    ledController.blinkState = !ledController.blinkState;
+  }
 }
 
 void setLEDMode(LEDMode mode) {
@@ -280,43 +351,66 @@ void setLEDMode(LEDMode mode) {
 
 // ==================== 按钮逻辑处理 ====================
 void handleButtonLogic() {
-  // 检查所有指定引脚是否都已触发 (P12, P14, P25, P26, P27)
-  systemStatus.allPinsTriggered = 
-    (buttonStates[BTN_P12].current == LOW) &&
-    (buttonStates[BTN_P14].current == LOW) &&
-    (buttonStates[BTN_P25].current == LOW) &&
-    (buttonStates[BTN_P26].current == LOW) &&
-    (buttonStates[BTN_P27].current == LOW);
-  
-  // P13单独按下 - 红黄频闪
+  // P13按下 - 黄色频闪（最高优先级，错误提示）
   if (buttonStates[BTN_P13].current == LOW) {
-    setLEDMode(LED_FLASH_RED_YELLOW);
+    setLEDMode(LED_FLASH_YELLOW);
   }
-  // 所有指定引脚按下 - 绿色呼吸
-  else if (systemStatus.allPinsTriggered) {
+  // P32按下或已触发过 - 红色呼吸，发送btn/resetAll消息
+  else if (buttonStates[BTN_P32].current == LOW || systemStatus.p32Triggered) {
+    setLEDMode(LED_BREATHE_RED);
+    
+    // P32按下时发送MQTT消息（只在状态变化时发送）
+    bool currentP32Triggered = (buttonStates[BTN_P32].current == LOW);
+    if (currentP32Triggered && !systemStatus.previousP32Triggered) {
+      sendMQTTMessage(MQTT_TOPIC_RESET, "");
+      Serial.println("发送btn/resetAll消息到MQTT");
+      systemStatus.p32Triggered = true;  // 标记P32已触发
+    }
+    systemStatus.previousP32Triggered = currentP32Triggered;
+  }
+  // P12,P14,P25,P26,P27按下 - 绿色呼吸，亮度根据按下的按钮数量递增
+  else if (buttonStates[BTN_P12].current == LOW || 
+           buttonStates[BTN_P14].current == LOW || 
+           buttonStates[BTN_P25].current == LOW || 
+           buttonStates[BTN_P26].current == LOW || 
+           buttonStates[BTN_P27].current == LOW) {
+    
+    // 计算按下的按钮数量
+    int pressedCount = 0;
+    if (buttonStates[BTN_P12].current == LOW) pressedCount++;
+    if (buttonStates[BTN_P14].current == LOW) pressedCount++;
+    if (buttonStates[BTN_P25].current == LOW) pressedCount++;
+    if (buttonStates[BTN_P26].current == LOW) pressedCount++;
+    if (buttonStates[BTN_P27].current == LOW) pressedCount++;
+    
+    // 根据按下的按钮数量设置亮度（每按一个增加51，5个全按为255）
+    ledController.greenBreathBrightness = pressedCount * 51;
+    if (ledController.greenBreathBrightness > 255) ledController.greenBreathBrightness = 255;
+    
     setLEDMode(LED_BREATHE_GREEN);
     
-    // 发送MQTT消息（状态变化时）
-    if (systemStatus.allPinsTriggered != systemStatus.previousAllPinsTriggered) {
+    // 检查当前所有指定引脚是否都已触发
+    bool allPinsTriggered = 
+      (buttonStates[BTN_P12].current == LOW) &&
+      (buttonStates[BTN_P14].current == LOW) &&
+      (buttonStates[BTN_P25].current == LOW) &&
+      (buttonStates[BTN_P26].current == LOW) &&
+      (buttonStates[BTN_P27].current == LOW);
+    
+    // 所有5个按钮都按下时发送ball/triggered消息（只在状态变化时发送）
+    if (allPinsTriggered && !systemStatus.previousAllPinsTriggered) {
       sendMQTTMessage(MQTT_TOPIC_SUB, "");
-      Serial.println("发送触发消息到MQTT");
+      Serial.println("发送ball/triggered消息到MQTT");
     }
+    systemStatus.previousAllPinsTriggered = allPinsTriggered;
   }
-  // 默认关闭
+  // P12,P14,P25,P26,P27都没有按下 - 红色呼吸
   else {
-    setLEDMode(LED_OFF);
+    setLEDMode(LED_BREATHE_RED);
+    ledController.greenBreathBrightness = 0;  // 重置绿色呼吸亮度
+    systemStatus.previousAllPinsTriggered = false;
+    systemStatus.previousP32Triggered = false;
   }
-  
-  // P32按下 - 发送重置信号
-  bool currentP32Triggered = (buttonStates[BTN_P32].current == LOW);
-  if (currentP32Triggered && !systemStatus.previousP32Triggered) {
-    sendMQTTMessage(MQTT_TOPIC_RESET, "");
-    Serial.println("发送重置信号到MQTT");
-  }
-  
-  // 更新状态记录
-  systemStatus.previousAllPinsTriggered = systemStatus.allPinsTriggered;
-  systemStatus.previousP32Triggered = currentP32Triggered;
 }
 
 // ==================== MQTT连接管理 ====================
