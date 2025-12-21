@@ -83,7 +83,7 @@ void initializeSystem() {
   systemStatus.p32Triggered = false;
   
   // 初始化LED控制器
-  ledController.mode = LED_OFF;
+  ledController.mode = LED_BREATHE_RED;  // 默认红色呼吸
   ledController.lastUpdateTime = 0;
   ledController.blinkState = false;
   ledController.breathState = 0;
@@ -342,6 +342,8 @@ void setLEDMode(LEDMode mode) {
   if (ledController.mode != mode) {
     ledController.mode = mode;
     ledController.lastUpdateTime = millis();
+    ledController.breathState = 0;  // 重置呼吸状态
+    ledController.breathDirection = 1;
     
     if (mode == LED_OFF) {
       turnOffLEDs();
@@ -351,67 +353,84 @@ void setLEDMode(LEDMode mode) {
 
 // ==================== 按钮逻辑处理 ====================
 void handleButtonLogic() {
-  // P13按下 - 黄色频闪（最高优先级，错误提示）
+  // 打印所有引脚状态信息
+  static unsigned long lastPrintTime = 0;
+  unsigned long currentTime = millis();
+  if (currentTime - lastPrintTime >= 1000) { // 每秒打印一次
+    lastPrintTime = currentTime;
+    Serial.print("引脚状态: P13=");
+    Serial.print(buttonStates[BTN_P13].current == LOW ? "LOW" : "HIGH");
+    Serial.print(", P32=");
+    Serial.print(buttonStates[BTN_P32].current == LOW ? "LOW" : "HIGH");
+    Serial.print(", P12=");
+    Serial.print(buttonStates[BTN_P12].current == LOW ? "LOW" : "HIGH");
+    Serial.print(", P14=");
+    Serial.print(buttonStates[BTN_P14].current == LOW ? "LOW" : "HIGH");
+    Serial.print(", P25=");
+    Serial.print(buttonStates[BTN_P25].current == LOW ? "LOW" : "HIGH");
+    Serial.print(", P26=");
+    Serial.print(buttonStates[BTN_P26].current == LOW ? "LOW" : "HIGH");
+    Serial.print(", P27=");
+    Serial.println(buttonStates[BTN_P27].current == LOW ? "LOW" : "HIGH");
+  }
+  
+  // 1. 统计当前绿色灯效组按下的按键数量
+  int greenPressedCount = 0;
+  if (buttonStates[BTN_P12].current == LOW) greenPressedCount++;
+  if (buttonStates[BTN_P14].current == LOW) greenPressedCount++;
+  if (buttonStates[BTN_P25].current == LOW) greenPressedCount++;
+  if (buttonStates[BTN_P26].current == LOW) greenPressedCount++;
+  if (buttonStates[BTN_P27].current == LOW) greenPressedCount++;
+
+  // 2. 核心逻辑判断（严格执行优先级）
+
+  // --- 优先级 1: P13 黄色频闪 (最高优先级，错误/警告) ---
   if (buttonStates[BTN_P13].current == LOW) {
     setLEDMode(LED_FLASH_YELLOW);
+    systemStatus.previousAllPinsTriggered = false;
+    systemStatus.previousP32Triggered = false;
   }
-  // P32按下或已触发过 - 红色呼吸，发送btn/resetAll消息
-  else if (buttonStates[BTN_P32].current == LOW || systemStatus.p32Triggered) {
+  
+  // --- 优先级 2: P32 红色呼吸 (它必须排在绿色之前) ---
+  // 逻辑：如果 P32 被按下，直接强制进入红色模式，忽略任何绿色按钮的状态
+  else if (buttonStates[BTN_P32].current == LOW) {
     setLEDMode(LED_BREATHE_RED);
     
-    // P32按下时发送MQTT消息（只在状态变化时发送）
-    bool currentP32Triggered = (buttonStates[BTN_P32].current == LOW);
-    if (currentP32Triggered && !systemStatus.previousP32Triggered) {
+    // 发送 MQTT 重置消息（仅在按下瞬间发送一次）
+    if (!systemStatus.previousP32Triggered) {
       sendMQTTMessage(MQTT_TOPIC_RESET, "");
-      Serial.println("发送btn/resetAll消息到MQTT");
-      systemStatus.p32Triggered = true;  // 标记P32已触发
+      Serial.println("P32 触发：强制红色呼吸并发送 RESET");
+      systemStatus.previousP32Triggered = true;
     }
-    systemStatus.previousP32Triggered = currentP32Triggered;
+    systemStatus.previousAllPinsTriggered = false;
   }
-  // P12,P14,P25,P26,P27按下 - 绿色呼吸，亮度根据按下的按钮数量递增
-  else if (buttonStates[BTN_P12].current == LOW || 
-           buttonStates[BTN_P14].current == LOW || 
-           buttonStates[BTN_P25].current == LOW || 
-           buttonStates[BTN_P26].current == LOW || 
-           buttonStates[BTN_P27].current == LOW) {
-    
-    // 计算按下的按钮数量
-    int pressedCount = 0;
-    if (buttonStates[BTN_P12].current == LOW) pressedCount++;
-    if (buttonStates[BTN_P14].current == LOW) pressedCount++;
-    if (buttonStates[BTN_P25].current == LOW) pressedCount++;
-    if (buttonStates[BTN_P26].current == LOW) pressedCount++;
-    if (buttonStates[BTN_P27].current == LOW) pressedCount++;
-    
-    // 根据按下的按钮数量设置亮度（每按一个增加51，5个全按为255）
-    ledController.greenBreathBrightness = pressedCount * 51;
-    if (ledController.greenBreathBrightness > 255) ledController.greenBreathBrightness = 255;
-    
+  
+  // --- 优先级 3: 绿色组触发 (只有在 P13 和 P32 都没按时才生效) ---
+  else if (greenPressedCount > 0) {
+    // 设置亮度：按下的个数 * 51
+    ledController.greenBreathBrightness = greenPressedCount * 51;
     setLEDMode(LED_BREATHE_GREEN);
     
-    // 检查当前所有指定引脚是否都已触发
-    bool allPinsTriggered = 
-      (buttonStates[BTN_P12].current == LOW) &&
-      (buttonStates[BTN_P14].current == LOW) &&
-      (buttonStates[BTN_P25].current == LOW) &&
-      (buttonStates[BTN_P26].current == LOW) &&
-      (buttonStates[BTN_P27].current == LOW);
-    
-    // 所有5个按钮都按下时发送ball/triggered消息（只在状态变化时发送）
-    if (allPinsTriggered && !systemStatus.previousAllPinsTriggered) {
-      sendMQTTMessage(MQTT_TOPIC_SUB, "");
-      Serial.println("发送ball/triggered消息到MQTT");
+    // 检查是否全亮
+    bool allGreen = (greenPressedCount == 5);
+    if (allGreen && !systemStatus.previousAllPinsTriggered) {
+      sendMQTTMessage(MQTT_TOPIC_SUB, ""); 
+      Serial.println("全部绿色引脚触发：发送 TRIGGERED");
     }
-    systemStatus.previousAllPinsTriggered = allPinsTriggered;
+    systemStatus.previousAllPinsTriggered = allGreen;
+    systemStatus.previousP32Triggered = false; 
   }
-  // P12,P14,P25,P26,P27都没有按下 - 红色呼吸
+  
+  // --- 优先级 4: 默认状态（无任何引脚触发）- 红色呼吸 ---
   else {
     setLEDMode(LED_BREATHE_RED);
-    ledController.greenBreathBrightness = 0;  // 重置绿色呼吸亮度
+    ledController.greenBreathBrightness = 0;
     systemStatus.previousAllPinsTriggered = false;
     systemStatus.previousP32Triggered = false;
   }
 }
+
+
 
 // ==================== MQTT连接管理 ====================
 void updateMQTTConnection() {
