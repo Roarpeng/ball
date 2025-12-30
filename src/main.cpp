@@ -83,6 +83,11 @@ void initializeSystem() {
   systemStatus.p32Triggered = false;
   systemStatus.firstTriggeredSent = false;  // 初始化首次触发标志为false
   
+  // 初始化初始按钮状态数组
+  for (int i = 0; i < 6; i++) {
+    systemStatus.initialButtonStates[i] = HIGH;  // 默认初始状态为HIGH（未按下）
+  }
+  
   // 初始化LED控制器
   ledController.mode = LED_BREATHE_RED;  // 默认红色呼吸
   ledController.lastUpdateTime = 0;
@@ -354,20 +359,16 @@ void setLEDMode(LEDMode mode) {
 
 // ==================== 按钮逻辑处理 ====================
 void handleButtonLogic() {
-  // 检查是否有非P32的按钮被按下
-  bool nonP32Pressed = false;
+  // 检查非P32按钮状态是否有变化，并对每个变化的按钮发送消息
   for (int i = 0; i < 6; i++) { // 检查前6个按钮（非P32）
-    if (buttonStates[i].current == LOW) {
-      nonP32Pressed = true;
-      break;
+    // 如果当前按钮状态与初始状态不同，则发送消息
+    if (buttonStates[i].current != systemStatus.initialButtonStates[i]) {
+      sendMQTTMessage(MQTT_TOPIC_FIRST_TRIGGERED, "");
+      Serial.printf("按钮P%d状态改变：发送 ball/firstTriggered 消息\n", BUTTON_PINS[i]);
+      
+      // 更新初始状态为当前状态，以便下一次状态变化时触发
+      systemStatus.initialButtonStates[i] = buttonStates[i].current;
     }
-  }
-  
-  // 如果尚未发送首次触发消息，且有非P32按钮被按下，则发送首次触发消息
-  if (!systemStatus.firstTriggeredSent && nonP32Pressed) {
-    sendMQTTMessage(MQTT_TOPIC_FIRST_TRIGGERED, "");
-    Serial.println("首次触发：发送 ball/firstTriggered 消息");
-    systemStatus.firstTriggeredSent = true;
   }
 
   // 打印所有引脚状态信息
@@ -421,6 +422,12 @@ void handleButtonLogic() {
       // 重置首次触发标志，允许下次非P32按钮触发时发送ball/firstTriggered消息
       systemStatus.firstTriggeredSent = false;
       Serial.println("P32 触发：重置首次触发标志");
+      
+      // 记录当前非P32按钮的初始状态
+      for (int i = 0; i < 6; i++) { // 记录前6个按钮（非P32）的初始状态
+        systemStatus.initialButtonStates[i] = buttonStates[i].current;
+      }
+      Serial.println("P32 触发：记录当前按钮状态为初始状态");
       
       systemStatus.previousP32Triggered = true;
     }

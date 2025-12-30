@@ -94,6 +94,7 @@ struct SystemStatus {
   bool previousP32Triggered;
   bool p32Triggered;  // P32是否被触发过，触发后保持红色呼吸直到系统重置
   bool firstTriggeredSent;  // 是否已发送过首次触发消息
+  bool initialButtonStates[6];  // 存储非P32引脚的初始状态
 };
 
 #endif // CONFIG_H
