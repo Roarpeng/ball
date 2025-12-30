@@ -417,6 +417,11 @@ void handleButtonLogic() {
     if (!systemStatus.previousP32Triggered) {
       sendMQTTMessage(MQTT_TOPIC_RESET, "");
       Serial.println("P32 触发：强制红色呼吸并发送 RESET");
+      
+      // 重置首次触发标志，允许下次非P32按钮触发时发送ball/firstTriggered消息
+      systemStatus.firstTriggeredSent = false;
+      Serial.println("P32 触发：重置首次触发标志");
+      
       systemStatus.previousP32Triggered = true;
     }
     systemStatus.previousAllPinsTriggered = false;
