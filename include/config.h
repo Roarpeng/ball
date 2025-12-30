@@ -46,40 +46,7 @@ extern const char* MQTT_USER;
 extern const char* MQTT_PASSWORD;
 extern const char* MQTT_TOPIC_SUB;
 extern const char* MQTT_TOPIC_RESET;
-
-#define WEB_SERVER_PORT 80
-
-// ==================== 颜色配置 ====================
-// RGB颜色定义 (R, G, B范围: 0-255)
-#define COLOR_BREATHE_RED_R 255
-#define COLOR_BREATHE_RED_G 0
-#define COLOR_BREATHE_RED_B 0
-
-#define COLOR_BREATHE_GREEN_R 0
-#define COLOR_BREATHE_GREEN_G 255
-#define COLOR_BREATHE_GREEN_B 0
-
-#define COLOR_FLASH_YELLOW_R 255
-#define COLOR_FLASH_YELLOW_G 255
-#define COLOR_FLASH_YELLOW_B 0
-
-// ==================== 时间配置 ====================
-#define DEBOUNCE_DELAY 50
-#define WEBSOCKET_UPDATE_INTERVAL 100
-#define BLINK_INTERVAL 500
-#define BREATHE_INTERVAL 30
-#define BREATHE_STEP 5
-
-// ==================== 网络配置 ====================
-extern const char* WIFI_SSID;
-extern const char* WIFI_PASSWORD;
-
-extern const char* MQTT_SERVER;
-extern const uint16_t MQTT_PORT;
-extern const char* MQTT_USER;
-extern const char* MQTT_PASSWORD;
-extern const char* MQTT_TOPIC_SUB;
-extern const char* MQTT_TOPIC_RESET;
+extern const char* MQTT_TOPIC_FIRST_TRIGGERED;
 
 #define WEB_SERVER_PORT 80
 
@@ -126,6 +93,7 @@ struct SystemStatus {
   bool previousAllPinsTriggered;
   bool previousP32Triggered;
   bool p32Triggered;  // P32是否被触发过，触发后保持红色呼吸直到系统重置
+  bool firstTriggeredSent;  // 是否已发送过首次触发消息
 };
 
 #endif // CONFIG_H

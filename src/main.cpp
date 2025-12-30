@@ -81,6 +81,7 @@ void initializeSystem() {
   systemStatus.previousAllPinsTriggered = false;
   systemStatus.previousP32Triggered = false;
   systemStatus.p32Triggered = false;
+  systemStatus.firstTriggeredSent = false;  // 初始化首次触发标志为false
   
   // 初始化LED控制器
   ledController.mode = LED_BREATHE_RED;  // 默认红色呼吸
@@ -353,6 +354,22 @@ void setLEDMode(LEDMode mode) {
 
 // ==================== 按钮逻辑处理 ====================
 void handleButtonLogic() {
+  // 检查是否有非P32的按钮被按下
+  bool nonP32Pressed = false;
+  for (int i = 0; i < 6; i++) { // 检查前6个按钮（非P32）
+    if (buttonStates[i].current == LOW) {
+      nonP32Pressed = true;
+      break;
+    }
+  }
+  
+  // 如果尚未发送首次触发消息，且有非P32按钮被按下，则发送首次触发消息
+  if (!systemStatus.firstTriggeredSent && nonP32Pressed) {
+    sendMQTTMessage(MQTT_TOPIC_FIRST_TRIGGERED, "");
+    Serial.println("首次触发：发送 ball/firstTriggered 消息");
+    systemStatus.firstTriggeredSent = true;
+  }
+
   // 打印所有引脚状态信息
   static unsigned long lastPrintTime = 0;
   unsigned long currentTime = millis();
@@ -457,6 +474,7 @@ bool connectToMQTT() {
   if (mqttClient.connect(MQTT_USER)) {
     Serial.println("连接成功");
     mqttClient.subscribe(MQTT_TOPIC_SUB);
+    mqttClient.subscribe(MQTT_TOPIC_FIRST_TRIGGERED);  // 添加对ball/firstTriggered的订阅
     systemStatus.mqttConnected = true;
     return true;
   } else {
